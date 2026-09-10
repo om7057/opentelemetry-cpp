@@ -554,6 +554,23 @@ void HttpOperation::Cleanup()
       session->GetHttpClient().ScheduleRemoveSession(session->GetSessionId(),
                                                      std::move(curl_resource_));
     }
+    else
+    {
+      // No session to hand the resource to: this happens when SendAsync() fails in Setup()
+      // (e.g. an unsupported HTTP method), before async_data_->session is published. Nothing
+      // downstream owns curl_resource_ in that case, so free it here rather than leak it.
+      if (curl_resource_.easy_handle != nullptr)
+      {
+        curl_easy_cleanup(curl_resource_.easy_handle);
+        curl_resource_.easy_handle = nullptr;
+      }
+
+      if (curl_resource_.headers_chunk != nullptr)
+      {
+        curl_slist_free_all(curl_resource_.headers_chunk);
+        curl_resource_.headers_chunk = nullptr;
+      }
+    }
 
     callback.swap(async_data_->callback);
     if (callback)

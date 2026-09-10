@@ -15,6 +15,13 @@ Increment the:
 
 ## [Unreleased]
 
+* [EXT] Fix a leak in the curl HTTP client: an asynchronous request whose
+  `Setup()` fails (any method other than GET or POST) built its async state
+  before publishing the session, so `Cleanup()` took the async branch, found
+  no session to hand the easy handle and header list to, and returned without
+  freeing them. It now frees them in that case.
+  [#4397](https://github.com/open-telemetry/opentelemetry-cpp/issues/4397)
+
 * [DOC] Fix and clarify the `StartSpanOptions` documentation
   [#4526](https://github.com/open-telemetry/opentelemetry-cpp/pull/4526)
 

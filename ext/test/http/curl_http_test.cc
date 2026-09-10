@@ -591,6 +591,33 @@ TEST_F(BasicCurlHttpTests, ACancelBeforeTheResponseReportsCancelled)
   session_manager->FinishAllSessions();
 }
 
+// An async request whose Setup() fails (any method other than Get/Post lands on
+// CURLE_UNSUPPORTED_PROTOCOL) used to leak its easy handle and header list: SendAsync() builds
+// async_data_ before calling Setup() but publishes async_data_->session only afterwards, so on
+// a Setup() failure Cleanup() takes the async branch, finds no session to hand curl_resource_
+// to, and returned without freeing it. This case has no functional assertion beyond a clean
+// terminal outcome; the leak it guards against is caught by the ASan/LSan sanitizer builds.
+TEST_F(BasicCurlHttpTests, AnAsyncSetupFailureDoesNotLeakTheEasyHandle)
+{
+  received_requests_.clear();
+  auto session_manager = std::make_shared<http_client::curl::HttpCurlClientFactory>()->Create();
+  ASSERT_TRUE(session_manager != nullptr);
+
+  auto session = session_manager->CreateSession("http://127.0.0.1:19000");
+  auto request = session->CreateRequest();
+  request->SetUri("get/");
+  request->SetMethod(http_client::Method::Head);  // unsupported: Setup() fails before send
+
+  auto handler = std::make_shared<TerminalCountingHandler>();
+  session->SendRequest(handler);
+  session->FinishSession();
+
+  EXPECT_FALSE(handler->got_response_.load(std::memory_order_acquire));
+  EXPECT_EQ(1, handler->terminal_count_.load(std::memory_order_acquire));
+
+  session_manager->FinishAllSessions();
+}
+
 // NextRetryTime draws the backoff jitter from an engine that used to be a shared static, so
 // two clients retrying at the same time wrote the same std::mt19937. The case passes either
 // way, since a data race is not a functional failure. It is here for the sanitizer builds.
